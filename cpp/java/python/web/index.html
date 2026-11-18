@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Library Management System</title>
+<style>
+:root{--bg:#f6f7fb;--card:#fff;--text:#1d2433;--muted:#667085;--accent:#3b5bdb;--line:#e3e6ee;--ok:#2b8a3e;--bad:#c92a2a}
+@media (prefers-color-scheme:dark){:root{--bg:#12151c;--card:#1b202b;--text:#e8ebf3;--muted:#98a2b3;--accent:#748ffc;--line:#2c3342;--ok:#69db7c;--bad:#ff8787}}
+*{box-sizing:border-box}body{margin:0;font-family:system-ui,sans-serif;background:var(--bg);color:var(--text)}
+header{padding:20px;text-align:center}h1{margin:0;font-size:1.5rem}header p{margin:4px 0 0;color:var(--muted);font-size:.9rem}
+main{max-width:1000px;margin:auto;padding:0 16px 40px;display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px}
+h2{margin:0 0 10px;font-size:1rem}input,button{font:inherit;padding:8px 10px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--text)}
+input{width:100%;margin-bottom:8px}button{background:var(--accent);color:#fff;border:0;cursor:pointer;margin:2px 4px 2px 0}
+.row{display:flex;gap:8px}.row input{flex:1}
+#msg{grid-column:1/-1;min-height:44px;padding:12px 16px;border-radius:12px;background:var(--card);border:1px solid var(--line)}
+.item{padding:8px 0;border-bottom:1px solid var(--line);font-size:.9rem}.item:last-child{border:0}
+.tag{font-size:.75rem;padding:2px 8px;border-radius:99px;border:1px solid var(--line);color:var(--muted)}
+.q{color:var(--muted);font-size:.8rem}.empty{color:var(--muted);font-size:.9rem}
+</style>
+</head>
+<body>
+<header><h1>📚 Library Management System</h1><p>Linked List (books) · Queue (reservations) · Array (users)</p></header>
+<main>
+<div id="msg">Welcome! Sample data loaded.</div>
+
+<section class="card"><h2>Issue / Return / Reserve</h2>
+<input id="uid" type="number" placeholder="User ID">
+<input id="bid" type="number" placeholder="Book ID">
+<button onclick="act('issue')">Issue</button><button onclick="act('return')">Return</button><button onclick="act('reserve')">Reserve</button></section>
+
+<section class="card"><h2>Search Book</h2>
+<div class="row"><input id="sq" placeholder="Title or author"><button onclick="doSearch()">Search</button></div><div id="sres"></div></section>
+
+<section class="card"><h2>Add Book</h2>
+<input id="nbid" type="number" placeholder="Book ID"><input id="nbt" placeholder="Title"><input id="nba" placeholder="Author">
+<button onclick="addBook()">Add Book</button></section>
+
+<section class="card"><h2>User Management</h2>
+<input id="nuid" type="number" placeholder="User ID"><input id="nun" placeholder="Name">
+<button onclick="addUser()">Add</button><button onclick="updateUser()">Update Name</button></section>
+
+<section class="card"><h2>Available Books (linked list)</h2><div id="avail"></div></section>
+<section class="card"><h2>Issued Books (linked list + queue)</h2><div id="iss"></div></section>
+<section class="card" style="grid-column:1/-1"><h2>Users (array)</h2><div id="usr"></div></section>
+</main>
+
+<script>
+/* ===== LOGIC (data structures) ===== */
+const MAX_USERS = 100, MAX_ISSUE = 3;
+class QNode { constructor(u){ this.uid = u; this.next = null; } }
+class Queue {
+  constructor(){ this.front = null; this.rear = null; }
+  isEmpty(){ return this.front === null; }
+  enqueue(u){ const n = new QNode(u); if (!this.rear) this.front = this.rear = n; else { this.rear.next = n; this.rear = n; } }
+  dequeue(){ if (!this.front) return -1; const u = this.front.uid; this.front = this.front.next; if (!this.front) this.rear = null; return u; }
+  items(){ const a = []; for (let p = this.front; p; p = p.next) a.push(p.uid); return a; }
+}
+class Book { constructor(id, t, a){ this.id = id; this.title = t; this.author = a; this.issuedTo = -1; this.q = new Queue(); this.next = null; } }
+class BookList {
+  constructor(){ this.head = null; }
+  pushBack(b){ b.next = null; if (!this.head) { this.head = b; return; } let p = this.head; while (p.next) p = p.next; p.next = b; }
+  find(id){ for (let p = this.head; p; p = p.next) if (p.id === id) return p; return null; }
+  remove(id){ let prev = null, cur = this.head; while (cur && cur.id !== id) { prev = cur; cur = cur.next; }
+    if (!cur) return null; if (prev) prev.next = cur.next; else this.head = cur.next; cur.next = null; return cur; }
+  toArray(){ const a = []; for (let p = this.head; p; p = p.next) a.push(p); return a; }
+}
+class Library {
+  constructor(){ this.available = new BookList(); this.issued = new BookList(); this.users = []; }
+  findBook(id){ return this.available.find(id) || this.issued.find(id); }
+  findUser(id){ return this.users.find(u => u.id === id) || null; }
+  addBook(id, t, a){ if (this.findBook(id)) return "Book ID already exists."; this.available.pushBack(new Book(id, t, a)); return "Book added."; }
+  addUser(id, n){ if (this.users.length >= MAX_USERS) return "User array full."; if (this.findUser(id)) return "User ID already exists.";
+    this.users.push({ id, name: n, issued: [] }); return "User added."; }
+  updateUser(id, n){ const u = this.findUser(id); if (!u) return "User not found."; u.name = n; return "User updated."; }
+  search(key){ const k = key.toLowerCase(), out = [];
+    for (const [st, l] of [["Available", this.available], ["Issued", this.issued]])
+      for (const b of l.toArray()) if (b.title.toLowerCase().includes(k) || b.author.toLowerCase().includes(k)) out.push({ b, st });
+    return out; }
+  issue(uid, bid){
+    const u = this.findUser(uid); if (!u) return "User not found.";
+    if (u.issued.length >= MAX_ISSUE) return `Limit of ${MAX_ISSUE} books reached.`;
+    const b = this.available.remove(bid);
+    if (b) { u.issued.push(b.id); b.issuedTo = u.id; this.issued.pushBack(b); return `"${b.title}" issued to ${u.name}.`; }
+    const ib = this.issued.find(bid);
+    if (!ib) return "Book not found.";
+    return ib.issuedTo === uid ? "You already have this book." : "Book is already issued. Use Reserve to join the queue.";
+  }
+  reserve(uid, bid){
+    const u = this.findUser(uid); if (!u) return "User not found.";
+    const b = this.issued.find(bid);
+    if (!b) return this.available.find(bid) ? "Book is available - just issue it." : "Book not found.";
+    if (b.issuedTo === uid) return "You already hold this book.";
+    if (b.q.items().includes(uid)) return "Already in the queue.";
+    b.q.enqueue(uid); return `${u.name} joined the queue (position ${b.q.items().length}).`;
+  }
+  ret(bid){
+    const b = this.issued.find(bid); if (!b) return "This book is not currently issued.";
+    const prev = this.findUser(b.issuedTo);
+    if (prev) prev.issued = prev.issued.filter(i => i !== bid);
+    let msg = `"${b.title}" returned${prev ? " by " + prev.name : ""}. `;
+    b.issuedTo = -1;
+    while (!b.q.isEmpty()) {
+      const nu = this.findUser(b.q.dequeue());
+      if (nu && nu.issued.length < MAX_ISSUE) { nu.issued.push(b.id); b.issuedTo = nu.id; return msg + `Reserved! Automatically issued to ${nu.name} (ID ${nu.id}).`; }
+    }
+    this.issued.remove(bid); this.available.pushBack(b);
+    return msg + "Book is back on the available list.";
+  }
+}
+/* ===== END LOGIC ===== */
+
+/* ===== UI ===== */
+const lib = new Library();
+[[101,"Data Structures in C","Reema Thareja"],[102,"Let Us C","Yashavant Kanetkar"],[103,"Database System Concepts","Silberschatz"],[104,"Operating System Concepts","Galvin"]].forEach(b => lib.addBook(...b));
+[[1,"Amit"],[2,"Neha"],[3,"Rahul"]].forEach(u => lib.addUser(...u));
+
+const $ = id => document.getElementById(id);
+const num = id => parseInt($(id).value, 10);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const say = m => { $("msg").textContent = m; render(); };
+
+function bookHtml(b, st){
+  const q = b.q.items();
+  return `<div class="item"><b>[${b.id}] ${esc(b.title)}</b> — ${esc(b.author)} ${st ? `<span class="tag">${st}</span>` : ""}` +
+    (b.issuedTo !== -1 ? `<div class="q">Issued to user ${b.issuedTo}</div>` : "") +
+    (q.length ? `<div class="q">Queue: ${q.join(" → ")}</div>` : "") + `</div>`;
+}
+function render(){
+  const a = lib.available.toArray(), i = lib.issued.toArray();
+  $("avail").innerHTML = a.length ? a.map(b => bookHtml(b)).join("") : '<div class="empty">(none)</div>';
+  $("iss").innerHTML = i.length ? i.map(b => bookHtml(b)).join("") : '<div class="empty">(none)</div>';
+  $("usr").innerHTML = lib.users.map(u => `<div class="item"><b>ID ${u.id}</b> — ${esc(u.name)} · Issued: ` +
+    (u.issued.length ? u.issued.map(id => `[${id}] ${esc(lib.findBook(id).title)}`).join(", ") : "none") + `</div>`).join("");
+}
+function act(kind){
+  const u = num("uid"), b = num("bid");
+  if (kind !== "return" && isNaN(u)) return say("Enter a valid User ID.");
+  if (isNaN(b)) return say("Enter a valid Book ID.");
+  say(kind === "issue" ? lib.issue(u, b) : kind === "return" ? lib.ret(b) : lib.reserve(u, b));
+}
+function doSearch(){
+  const k = $("sq").value.trim(); if (!k) return say("Type a title or author to search.");
+  const r = lib.search(k);
+  $("sres").innerHTML = r.length ? r.map(x => bookHtml(x.b, x.st)).join("") : '<div class="empty">No book found.</div>';
+  say(`${r.length} result(s) for "${k}".`);
+}
+function addBook(){
+  const id = num("nbid"), t = $("nbt").value.trim(), a = $("nba").value.trim();
+  if (isNaN(id) || !t || !a) return say("Fill Book ID, Title and Author.");
+  say(lib.addBook(id, t, a));
+}
+function addUser(){
+  const id = num("nuid"), n = $("nun").value.trim();
+  if (isNaN(id) || !n) return say("Fill User ID and Name.");
+  say(lib.addUser(id, n));
+}
+function updateUser(){
+  const id = num("nuid"), n = $("nun").value.trim();
+  if (isNaN(id) || !n) return say("Fill User ID and Name.");
+  say(lib.updateUser(id, n));
+}
+render();
+</script>
+</body>
+</html>
